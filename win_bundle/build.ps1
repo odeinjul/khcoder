@@ -44,7 +44,7 @@ $PerlModules = @(
 	# 4.050 is the last release that builds against the MySQL 5.7 client in Strawberry's c\
 	'DBD::mysql@4.050',
 	# GUI
-	'Tk', 'Tk::FontDialog', 'Tk::MatchEntry', 'Tk::WaitBox', 'Tk::Icon',
+	'Tk', 'Tk::FontDialog', 'Tk::MatchEntry', 'Tk::WaitBox',   # Tk::Icon is not on CPAN; KH Coder falls back to a GIF icon
 	# data / text
 	'Algorithm::NaiveBayes', 'Clipboard', 'Clone', 'DBD::CSV', 'Excel::Writer::XLSX',
 	'File::BOM', 'File::Copy::Recursive', 'Jcode', 'Encode::EUCJPMS',
