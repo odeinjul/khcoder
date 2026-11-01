@@ -45,9 +45,10 @@ $PerlModules = @(
 	# 4.050 is the last release that builds against the MySQL 5.7 client in Strawberry's c\
 	'DBD::mysql@4.050',
 	# GUI
-	'Tk', 'Tk::FontDialog', 'Tk::MatchEntry', 'Tk::WaitBox',   # Tk::Icon is not on CPAN; KH Coder falls back to a GIF icon
+	'Tk', 'Tk::FontDialog', 'Tk::MatchEntry', 'Tk::WaitBox', 'Tk::DockFrame',   # Tk::Icon is not on CPAN; KH Coder falls back to a GIF icon
 	# data / text
 	'Algorithm::NaiveBayes', 'Clipboard', 'Clone', 'DBD::CSV', 'Excel::Writer::XLSX',
+	'Thread::Queue::Any', 'Unicode::Escape',
 	'File::BOM', 'File::Copy::Recursive', 'Jcode', 'Encode::EUCJPMS',
 	'Lingua::JA::Regular::Unicode', 'Lingua::Sentence', 'Lingua::Stem::Snowball',
 	'MySQL::Backup', 'Net::Telnet', 'Proc::Background', 'Spreadsheet::ParseExcel',
@@ -56,6 +57,26 @@ $PerlModules = @(
 	# Windows helpers
 	'Win32::Process::Info', 'Win32::Process::List', 'Win32::SearchPath',
 	'Win32::SystemInfo', 'Win32::DriveInfo', 'Devel::Platform::Info'
+)
+
+# Every non-optional module that kh_lib, kh_coder.pl and the plugins load
+# (optional ones: Image::Magick, NKF, Proc::Killall, Tk::Icon, Win32::GUI::SplashScreen).
+$RequiredModules = @(
+	'Algorithm::NaiveBayes', 'Algorithm::NaiveBayes::Model::Frequency', 'Algorithm::NaiveBayes::Util',
+	'Archive::Zip', 'Clipboard', 'Clone', 'DBD::CSV', 'DBD::mysql', 'DBI', 'Devel::Platform::Info::Win32',
+	'Encode::EUCJPMS', 'Encode::Guess', 'Encode::JP::H2Z', 'Encode::Locale', 'Excel::Writer::XLSX',
+	'File::BOM', 'File::Copy::Recursive', 'Jcode', 'Lingua::JA::Regular::Unicode', 'Lingua::Sentence',
+	'Lingua::Stem::Snowball', 'MySQL::Backup', 'Net::SMTP', 'Net::Telnet', 'Proc::Background',
+	'Spreadsheet::ParseExcel', 'Spreadsheet::ParseExcel::FmtJapan', 'Spreadsheet::ParseXLSX',
+	'Statistics::ChisqIndep', 'Statistics::Lite', 'Text::CSV_XS', 'Text::Diff', 'Text::Iconv',
+	'Text::Unidecode', 'Thread::Queue', 'Thread::Queue::Any', 'Time::Piece', 'Unicode::Escape',
+	'Unicode::Normalize', 'Win32', 'Win32::API', 'Win32::API::Callback', 'Win32::Console',
+	'Win32::DriveInfo', 'Win32::OLE', 'Win32::Process', 'Win32::Process::Info', 'Win32::Process::List',
+	'Win32::SearchPath', 'Win32::SystemInfo', 'YAML',
+	'Tk', 'Tk::Adjuster', 'Tk::Balloon', 'Tk::DialogBox', 'Tk::DockFrame', 'Tk::DropSite',
+	'Tk::ErrorDialog', 'Tk::FBox', 'Tk::FontDialog', 'Tk::HList', 'Tk::LabFrame', 'Tk::MatchEntry',
+	'Tk::NoteBook', 'Tk::PNG', 'Tk::Pane', 'Tk::Pixmap', 'Tk::ProgressBar', 'Tk::ROText', 'Tk::Tree',
+	'Tk::WaitBox'
 )
 
 function Step($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
@@ -166,6 +187,7 @@ if ($failed) {
 	throw "CPAN modules failed: $($failed -join ', ')"
 }
 Invoke-Native perl @('-MDBD::mysql', '-MTk', '-e', 'print "Perl $^V, DBD::mysql $DBD::mysql::VERSION, Tk $Tk::VERSION\n"')
+Invoke-Native perl (@('-e', '@m = grep { !eval "require $_; 1" } @ARGV; die "Cannot load: @m\n" if @m; print scalar(@ARGV), " modules load\n"') + $RequiredModules)
 
 #--------------------------------------------------------------------------
 Step "MariaDB $MariaDbVer"
