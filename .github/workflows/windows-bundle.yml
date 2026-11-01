@@ -1,0 +1,53 @@
+name: Windows bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'win_bundle/**'
+      - '.github/workflows/windows-bundle.yml'
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache downloads
+        uses: actions/cache@v6
+        with:
+          path: dist/cache
+          key: downloads-${{ hashFiles('win_bundle/build.ps1') }}
+          restore-keys: downloads-
+
+      - name: Build bundle
+        shell: pwsh
+        run: ./win_bundle/build.ps1
+
+      - name: Smoke test
+        shell: pwsh
+        run: ./win_bundle/smoke_test.ps1
+
+      - name: Upload smoke test logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-logs
+          path: dist/smoke
+          if-no-files-found: ignore
+
+      - name: Zip bundle
+        shell: pwsh
+        run: |
+          Set-Location dist
+          7z a -tzip -mx=5 khcoder-win64.zip khcoder | Select-Object -Last 3
+          "{0:N0} MB" -f ((Get-Item khcoder-win64.zip).Length / 1MB)
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: khcoder-win64
+          path: dist/khcoder-win64.zip
+          compression-level: 0
