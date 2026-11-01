@@ -11,12 +11,12 @@ on:
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 180
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
 
-      - name: Cache downloads
-        uses: actions/cache@v6
+      - name: Restore downloads
+        uses: actions/cache/restore@v6
         with:
           path: dist/cache
           key: downloads-${{ hashFiles('win_bundle/build.ps1') }}
@@ -25,6 +25,13 @@ jobs:
       - name: Build bundle
         shell: pwsh
         run: ./win_bundle/build.ps1
+
+      - name: Save downloads
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: dist/cache
+          key: downloads-${{ hashFiles('win_bundle/build.ps1') }}
 
       - name: Smoke test
         shell: pwsh

@@ -38,6 +38,7 @@ $JreUrl        = 'https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jr
 $TaggerUrl     = 'https://downloads.cs.stanford.edu/nlp/software/stanford-postagger-full-2018-10-16.zip'
 $SegmenterUrl  = 'https://downloads.cs.stanford.edu/nlp/software/stanford-segmenter-2018-10-16.zip'
 $MecabUrl      = 'https://github.com/ikegami-yukino/mecab/releases/download/v0.996.2/mecab-64-0.996.2.exe'
+$InnoextractUrl = 'https://github.com/dscharrer/innoextract/releases/download/1.9/innoextract-1.9-windows.zip'
 $PandocUrl     = 'https://github.com/jgm/pandoc/releases/download/2.7.3/pandoc-2.7.3-windows-i386.zip'
 
 $PerlModules = @(
@@ -63,6 +64,16 @@ function Invoke-Native {
 	param([string]$Exe, [string[]]$Arguments)
 	& $Exe @Arguments
 	if ($LASTEXITCODE -ne 0) { throw "$Exe exited with $LASTEXITCODE" }
+}
+
+# Run a GUI installer silently; fail instead of hanging if it waits for input.
+function Invoke-Installer([string]$Exe, [string[]]$Arguments, [int]$Minutes = 20) {
+	$p = Start-Process $Exe -ArgumentList $Arguments -PassThru
+	if (-not $p.WaitForExit($Minutes * 60 * 1000)) {
+		Stop-Process -Id $p.Id -Force
+		throw "$Exe did not finish within $Minutes minutes"
+	}
+	if ($p.ExitCode -ne 0) { throw "$Exe exited with $($p.ExitCode)" }
 }
 
 function Get-File([string[]]$Urls, [string]$Name) {
@@ -197,15 +208,12 @@ Get-ChildItem $data -File | Where-Object { $_.Extension -in '.err', '.pid', '.lo
 
 #--------------------------------------------------------------------------
 Step "R $RVer + packages"
-$rExe = Get-File $RUrls "R-$RVer-win.exe"
-$p = Start-Process $rExe -Wait -PassThru -ArgumentList `
-	'/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/NOICONS', '/TASKS=""', "/DIR=`"$Out\dep\R`""
-if ($p.ExitCode -ne 0) { throw "R installer exited with $($p.ExitCode)" }
+Invoke-Installer (Get-File $RUrls "R-$RVer-win.exe") @(
+	'/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/NOICONS', '/TASKS=""', "/DIR=`"$Out\dep\R`"")
 
 if (-not (Test-Path 'C:\rtools45\usr\bin\make.exe')) {
-	$rt = Get-File @($RtoolsUrl) 'rtools45.exe'
-	$p = Start-Process $rt -Wait -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/DIR=C:\rtools45'
-	if ($p.ExitCode -ne 0) { throw "Rtools installer exited with $($p.ExitCode)" }
+	Invoke-Installer (Get-File @($RtoolsUrl) 'rtools45.exe') @(
+		'/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/DIR=C:\rtools45')
 }
 $env:RTOOLS45_HOME = 'C:\rtools45'
 $env:RTOOLS46_HOME = 'C:\rtools45'
@@ -232,23 +240,24 @@ Expand-ZipFlat (Get-File @($SegmenterUrl) 'stanford-segmenter.zip') "$Out\dep\st
 
 #--------------------------------------------------------------------------
 Step 'MeCab'
+# The installer pops up a dialog even with /VERYSILENT, so unpack it instead and
+# compile IPADIC (EUC-JP sources) to UTF-8 ourselves.
+$ie = "$Cache\innoextract"
+if (-not (Test-Path "$ie\innoextract.exe")) { Expand-Zip (Get-File @($InnoextractUrl) 'innoextract.zip') $ie }
+$mcTmp = "$Out\dep\mecab.tmp"
+Invoke-Native "$ie\innoextract.exe" @('--silent', '--output-dir', $mcTmp, (Get-File @($MecabUrl) 'mecab-64.exe'))
 $mc = "$Out\dep\mecab"
-$p = Start-Process (Get-File @($MecabUrl) 'mecab-64.exe') -Wait -PassThru -ArgumentList `
-	'/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/NOICONS', "/DIR=`"$mc`""
-if ($p.ExitCode -ne 0) { throw "MeCab installer exited with $($p.ExitCode)" }
-Remove-Item "$mc\unins*" -Force -ErrorAction SilentlyContinue
-# The installer writes an absolute dicdir; make it relative to mecabrc so the folder can move.
-(Get-Content "$mc\etc\mecabrc") -replace '^\s*dicdir\s*=.*$', 'dicdir = $(rcpath)\..\dic\ipadic' |
-	Set-Content -Encoding ascii "$mc\etc\mecabrc"
+Move-Item "$mcTmp\app" $mc
+Remove-Item -Recurse -Force $mcTmp, "$mc\sdk"
+Invoke-Native "$mc\bin\mecab-dict-index.exe" @('-d', "$mc\dic\ipadic", '-o', "$mc\dic\ipadic", '-f', 'EUC-JP', '-t', 'utf-8')
+# Keep only what MeCab reads at run time.
+Get-ChildItem "$mc\dic\ipadic" -File |
+	Where-Object { $_.Extension -notin '.dic', '.bin', '.def' -and $_.Name -notin 'dicrc', 'COPYING' } |
+	Remove-Item -Force
+if (-not (Select-String -Path "$mc\etc\mecabrc" -Pattern '^dicdir\s*=\s*\$\(rcpath\)' -Quiet)) { throw 'mecabrc dicdir is not relative' }
 $dicInfo = & "$mc\bin\mecab.exe" -D -r "$mc\etc\mecabrc"
 $dicInfo | Write-Host
-if (-not ($dicInfo -match 'charset:\s*utf-?8')) {
-	Write-Host 'Rebuilding IPADIC as UTF-8'
-	$src = ($dicInfo | Select-String 'charset:\s*(\S+)').Matches[0].Groups[1].Value
-	Invoke-Native "$mc\bin\mecab-dict-index.exe" @('-d', "$mc\dic\ipadic", '-o', "$mc\dic\ipadic", '-f', $src, '-t', 'utf-8')
-	$dicInfo = & "$mc\bin\mecab.exe" -D -r "$mc\etc\mecabrc"
-	if (-not ($dicInfo -match 'charset:\s*utf-?8')) { throw 'MeCab dictionary is not UTF-8' }
-}
+if (-not ($dicInfo -match 'charset:\s*utf-?8')) { throw 'MeCab dictionary is not UTF-8' }
 
 #--------------------------------------------------------------------------
 Step 'pandoc'
