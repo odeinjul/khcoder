@@ -24,6 +24,11 @@ missing_of <- function(p) setdiff(p, c(base_pkgs, rownames(installed.packages(li
 
 install.packages(missing_of(pkgs), lib = lib, type = "binary", dependencies = dep_fields)
 
+# The archived packages still use Calloc/Free, which R >= 4.5 no longer defines.
+makevars <- file.path(tempdir(), "Makevars.win")
+writeLines("CPPFLAGS += -DCalloc=R_Calloc -DFree=R_Free -DRealloc=R_Realloc", makevars)
+Sys.setenv(R_MAKEVARS_USER = makevars)
+
 for (name in names(archived)) {
 	tarball <- file.path(tempdir(), basename(archived[[name]]))
 	download.file(archived[[name]], tarball, mode = "wb")
