@@ -41,6 +41,8 @@ $MecabUrl      = 'https://github.com/ikegami-yukino/mecab/releases/download/v0.9
 $PandocUrl     = 'https://github.com/jgm/pandoc/releases/download/2.7.3/pandoc-2.7.3-windows-i386.zip'
 
 $PerlModules = @(
+	# 4.050 is the last release that builds against the MySQL 5.7 client in Strawberry's c\
+	'DBD::mysql@4.050',
 	# GUI
 	'Tk', 'Tk::FontDialog', 'Tk::MatchEntry', 'Tk::WaitBox', 'Tk::Icon',
 	# data / text
@@ -141,9 +143,9 @@ foreach ($v in 'PERL5LIB', 'PERL5OPT', 'PERL_LOCAL_LIB_ROOT', 'PERL_MB_OPT', 'PE
 	Remove-Item "Env:$v" -ErrorAction SilentlyContinue
 }
 $env:PATH = "$Out\perl\perl\site\bin;$Out\perl\perl\bin;$Out\perl\c\bin;$env:PATH"
-Invoke-Native perl @('-MDBD::mysql', '-e', 'print "Perl $^V, DBD::mysql $DBD::mysql::VERSION\n"')
 $failed = @()
 foreach ($m in $PerlModules) {
+	Write-Host "cpanm $m"
 	& cpanm --notest --quiet $m
 	if ($LASTEXITCODE -ne 0) { $failed += $m }
 }
@@ -152,6 +154,7 @@ if ($failed) {
 		Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 80
 	throw "CPAN modules failed: $($failed -join ', ')"
 }
+Invoke-Native perl @('-MDBD::mysql', '-MTk', '-e', 'print "Perl $^V, DBD::mysql $DBD::mysql::VERSION, Tk $Tk::VERSION\n"')
 
 #--------------------------------------------------------------------------
 Step "MariaDB $MariaDbVer"
